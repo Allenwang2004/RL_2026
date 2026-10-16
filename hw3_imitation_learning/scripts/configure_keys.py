@@ -20,30 +20,44 @@ import numpy as np
 # Default output location (next to this script)
 DEFAULT_KEYMAP_PATH = Path(__file__).resolve().parent.parent / "hw3" / "keymap.json"
 
-# Every configurable action with a human-readable description and its default
-# (raw_code, ascii_code) — used both as documentation and as fallback.
-ACTIONS: list[tuple[str, str]] = [
-    ("move_up", "Move EE up (+Z) (recommended: UP ARROW)"),
-    ("move_down", "Move EE down (-Z) (recommended: DOWN ARROW)"),
-    ("move_left", "Move EE left (-X) (recommended: LEFT ARROW)"),
-    ("move_right", "Move EE right (+X) (recommended: RIGHT ARROW)"),
-    ("move_forward", "Move EE forward (+Y) (recommended: W)"),
-    ("move_backward", "Move EE backward (-Y) (recommended: S)"),
-    ("rot_x_pos", "Rotate EE +X axis"),
-    ("rot_x_neg", "Rotate EE -X axis"),
-    ("rot_y_pos", "Rotate EE +Y axis"),
-    ("rot_y_neg", "Rotate EE -Y axis"),
-    ("rot_z_pos", "Rotate EE +Z axis"),
-    ("rot_z_neg", "Rotate EE -Z axis"),
-    ("gripper_open", "Open gripper (Jaw +)"),
-    ("gripper_close", "Close gripper (Jaw -)"),
-    ("reset", "Reset environment (recommended: R)"),
-    ("record", "Toggle recording on/off (recommended: Space)"),
-    ("end_episode", "End recorded episode (recommended: Enter)"),
-    ("escape", "Quit session (recommended: ESC)"),
-    ("goal_cube_red", "Select RED cube as goal (multicube only)"),
-    ("goal_cube_green", "Select GREEN cube as goal (multicube only)"),
-    ("goal_cube_blue", "Select BLUE cube as goal (multicube only)"),
+# Every configurable action with a human-readable description (English, shown in
+# the OpenCV window; Chinese, printed in the terminal).  Movement directions are
+# relative to the arm, as seen from the "operator" camera behind the base.
+ACTIONS: list[tuple[str, str, str]] = [
+    ("move_up", "Move EE up (+Z) (recommended: UP ARROW)",
+     "夾爪往上移 (+Z)（建議：上方向鍵）"),
+    ("move_down", "Move EE down (-Z) (recommended: DOWN ARROW)",
+     "夾爪往下移 (-Z)（建議：下方向鍵）"),
+    ("move_left", "Move EE left (+Y) (recommended: LEFT ARROW)",
+     "夾爪往手臂的左邊移 (+Y)，即 operator 畫面的左邊（建議：左方向鍵）"),
+    ("move_right", "Move EE right (-Y) (recommended: RIGHT ARROW)",
+     "夾爪往手臂的右邊移 (-Y)，即 operator 畫面的右邊（建議：右方向鍵）"),
+    ("move_forward", "Move EE forward (+X) (recommended: W)",
+     "夾爪往前伸，遠離底座 (+X)，即 operator 畫面的深處（建議：W）"),
+    ("move_backward", "Move EE backward (-X) (recommended: S)",
+     "夾爪往後收，靠近底座 (-X)（建議：S）"),
+    ("rot_x_pos", "Rotate EE +X axis", "夾爪繞自身 X 軸正向旋轉（作業用不到，但仍要指定一個沒用過的鍵）"),
+    ("rot_x_neg", "Rotate EE -X axis", "夾爪繞自身 X 軸反向旋轉（作業用不到，但仍要指定一個沒用過的鍵）"),
+    ("rot_y_pos", "Rotate EE +Y axis", "夾爪繞自身 Y 軸正向旋轉（作業用不到，但仍要指定一個沒用過的鍵）"),
+    ("rot_y_neg", "Rotate EE -Y axis", "夾爪繞自身 Y 軸反向旋轉（作業用不到，但仍要指定一個沒用過的鍵）"),
+    ("rot_z_pos", "Rotate EE +Z axis", "夾爪繞自身 Z 軸正向旋轉（作業用不到，但仍要指定一個沒用過的鍵）"),
+    ("rot_z_neg", "Rotate EE -Z axis", "夾爪繞自身 Z 軸反向旋轉（作業用不到，但仍要指定一個沒用過的鍵）"),
+    ("gripper_open", "Open gripper (Jaw +)", "張開夾爪"),
+    ("gripper_close", "Close gripper (Jaw -)", "閉合夾爪（夾住方塊）"),
+    ("reset", "Reset environment (recommended: R)",
+     "重置環境，若正在錄製會丟棄這一段（建議：R）"),
+    ("record", "Toggle recording on/off (recommended: Space)",
+     "開始／暫停錄製（建議：空白鍵）"),
+    ("end_episode", "End recorded episode (recommended: Enter)",
+     "結束並儲存這一段 episode，然後重置環境（建議：Enter）"),
+    ("escape", "Quit session (recommended: ESC)",
+     "儲存進行中的 episode 並離開程式（建議：ESC）"),
+    ("goal_cube_red", "Select RED cube as goal (multicube only)",
+     "選紅色方塊當目標（只有 --multicube 模式會用到）"),
+    ("goal_cube_green", "Select GREEN cube as goal (multicube only)",
+     "選綠色方塊當目標（只有 --multicube 模式會用到）"),
+    ("goal_cube_blue", "Select BLUE cube as goal (multicube only)",
+     "選藍色方塊當目標（只有 --multicube 模式會用到）"),
 ]
 
 WINDOW_W = 640
@@ -135,9 +149,13 @@ def run_configuration(output_path: Path) -> None:
     keymap: dict[str, dict] = {}
     total = len(ACTIONS)
 
-    for i, (action_name, description) in enumerate(ACTIONS):
+    print("按鍵設定：請點一下 OpenCV 視窗讓它取得焦點，再依照下面的提示逐一按下要指定的按鍵。")
+    print("移動方向都是以手臂為準，也就是站在底座後方、看 operator 畫面時的前後左右。\n")
+
+    for i, (action_name, description, description_zh) in enumerate(ACTIONS):
         prompt = draw_prompt(action_name, description, i, total)
         cv2.imshow("Key Configuration", prompt)
+        print(f"  [{i + 1}/{total}] {action_name}: {description_zh}")
 
         # Wait for a key press (block until a key is pressed)
         while True:
@@ -155,7 +173,7 @@ def run_configuration(output_path: Path) -> None:
             "description": description,
         }
 
-        print(f"  [{i + 1}/{total}] {action_name:20s} -> '{label}' (raw={k_raw})")
+        print(f"           -> 已指定 '{label}' (raw={k_raw})")
 
         # Brief confirmation
         confirm = draw_assigned(action_name, k_raw, k_ascii)
@@ -172,6 +190,7 @@ def run_configuration(output_path: Path) -> None:
     print(
         "You can now run record_teleop_demos.py — it will load this mapping automatically."
     )
+    print(f"按鍵設定已存到 {output_path}，之後執行 record_teleop_demos.py 會自動載入。")
 
 
 def load_keymap(path: Path | None = None) -> dict[str, int]:

@@ -31,7 +31,7 @@ JOINT_NAMES: tuple[str, ...] = (
     "Wrist_Roll",
     "Jaw",
 )
-CAMERA_NAMES: tuple[str, ...] = ("left_wrist", "angle", "top")
+CAMERA_NAMES: tuple[str, ...] = ("left_wrist", "operator", "top")
 
 DEFAULT_KEYMAP_PATH: Path = Path(__file__).resolve().parent / "keymap.json"
 
@@ -96,18 +96,20 @@ def handle_teleop_key(
     jaw_act_idx : int
         Actuator index for the jaw/gripper.
     """
+    # Directions are relative to the arm, as seen from the "operator" camera
+    # behind the base: the arm reaches along +X, so its left is +Y.
     if action_name == "move_up":
         data.mocap_pos[mocap_id, 2] += 0.01
     elif action_name == "move_down":
         data.mocap_pos[mocap_id, 2] -= 0.01
     elif action_name == "move_left":
-        data.mocap_pos[mocap_id, 0] -= 0.01
-    elif action_name == "move_right":
-        data.mocap_pos[mocap_id, 0] += 0.01
-    elif action_name == "move_forward":
         data.mocap_pos[mocap_id, 1] += 0.01
-    elif action_name == "move_backward":
+    elif action_name == "move_right":
         data.mocap_pos[mocap_id, 1] -= 0.01
+    elif action_name == "move_forward":
+        data.mocap_pos[mocap_id, 0] += 0.01
+    elif action_name == "move_backward":
+        data.mocap_pos[mocap_id, 0] -= 0.01
     elif action_name == "rot_x_pos":
         data.mocap_quat[mocap_id] = rotate_quaternion(
             data.mocap_quat[mocap_id], [1, 0, 0], 10

@@ -28,6 +28,8 @@
         <camera name="top" pos="0 0.6 0.8" fovy="78" mode="targetbody" target="table"/>
         <camera name="angle" pos="0 0 0.6" fovy="78" mode="targetbody" target="table"/>
         <camera name="front_close" pos="0 0.2 0.4" fovy="78" mode="targetbody" target="vx300s_left/camera_focus"/>
+        <!-- Behind the arm base, looking along +X (the direction the arm reaches): image right = -Y, image up ~ +Z -->
+        <camera name="operator" pos="-0.72 0.55 0.48" fovy="58" xyaxes="0 -1 0 0.643 0 0.766"/>
 
     </worldbody>
 
