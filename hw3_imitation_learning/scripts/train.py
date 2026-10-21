@@ -5,7 +5,7 @@ state -> action-chunk prediction using the processed zarr dataset.
 
 Usage:
     python scripts/train.py --zarr datasets/processed/single_cube/processed_ee_xyz.zarr \
-        --state-keys ... \
+        --state-keys ... 
         --action-keys ...
 """
 
@@ -28,9 +28,10 @@ from hw3.model import BasePolicy, build_policy
 from torch.utils.data import DataLoader, random_split
 
 # TODO: Choose your own hyperparameters!
-EPOCHS = ... 
-BATCH_SIZE = ...
-LR = ...
+EPOCHS = 200
+BATCH_SIZE = 256
+LR = 1e-3
+WEIGHT_DECAY = 1e-4
 VAL_SPLIT = 0.1
 
 
@@ -48,6 +49,16 @@ def train_one_epoch(
         states, action_chunks = batch
         # TODO: Implement the training step for one batch here.
         # This mostly: Get states and action_chunks onto the correct device, compute the loss, and step the optimizer.
+        states = states.to(device)
+        action_chunks = action_chunks.to(device)
+
+        loss = model.compute_loss(states, action_chunks)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item()
+        n_batches += 1
 
     return total_loss / max(n_batches, 1)
 
@@ -65,6 +76,12 @@ def evaluate(
     for batch in loader:
         states, action_chunks = batch
         # TODO: Implement the evaluation step for one batch here.
+        states = states.to(device)
+        action_chunks = action_chunks.to(device)
+
+        loss = model.compute_loss(states, action_chunks)
+        total_loss += loss.item()
+        n_batches += 1
 
     return total_loss / max(n_batches, 1)
 
@@ -103,11 +120,32 @@ def main() -> None:
         "Supports column slicing with [:N], [M:], [M:N]. "
         "If omitted, uses the action_key attribute from the zarr metadata.",
     )
+    parser.add_argument(
+        "--extra-zarr",
+        type=Path,
+        nargs="+",
+        default=None,
+        help="Additional processed .zarr stores to merge with --zarr (e.g. DAgger data).",
+    )
+    parser.add_argument(
+        "--d-model",
+        type=int,
+        default=128,
+        help="Hidden layer width of the policy MLP (default: 128).",
+    )
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=2,
+        help="Number of hidden layers of the policy MLP (default: 2).",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    # select gpu 2
+    device = torch.device("cuda:2") if torch.cuda.is_available() else torch.device("cpu")
     print(f"Device: {device}")
 
     # ── load data ─────────────────────────────────────────────────────
@@ -159,15 +197,17 @@ def main() -> None:
         args.policy,
         state_dim=states.shape[1],
         action_dim=actions.shape[1],
-        # TODO: build with your desired specifications
+        chunk_size=args.chunk_size,
+        d_model=args.d_model,
+        depth=args.depth,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {n_params:,}")
 
     # TODO: implement an optimizer and scheduler
-    # optimizer =
-    # scheduler =
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
     # ── training loop ─────────────────────────────────────────────────
     best_val = float("inf")
@@ -217,6 +257,9 @@ def main() -> None:
                         "action_std": normalizer.action_std,
                     },
                     "chunk_size": args.chunk_size,
+                    # eval_utils.load_checkpoint rebuilds the model from these
+                    "d_model": args.d_model,
+                    "depth": args.depth,
                     "policy_type": args.policy,
                     "state_keys": args.state_keys,
                     "action_keys": args.action_keys,
@@ -239,3 +282,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
