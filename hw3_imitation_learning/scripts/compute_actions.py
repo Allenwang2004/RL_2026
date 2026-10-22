@@ -259,6 +259,7 @@ def load_and_merge_zarrs(zarr_paths: list[Path]) -> dict[str, np.ndarray]:
         all_data.setdefault("_dagger_ep_counts", []).append(
             ep_ends.size if is_dagger else 0
         )
+        all_data.setdefault("_is_dagger", []).append(np.full(n_steps, is_dagger))
 
         for key in data_grp:
             arr = np.asarray(data_grp[key][:n_steps])
@@ -344,6 +345,9 @@ def main() -> None:
     raw_action_gripper = merged.get("action_gripper")
     if raw_action_gripper is not None:
         action_gripper_trimmed = raw_action_gripper[keep_idx]
+    # Per-episode DAgger flag (train.py keeps DAgger episodes out of validation)
+    episode_is_dagger = merged["_is_dagger"][keep_idx][new_ep_ends - 1]
+
     # ── write output zarr ─────────────────────────────────────────────
     if args.output is not None:
         out_path = args.output
@@ -387,6 +391,10 @@ def main() -> None:
     # Episode ends
     out_meta.create_array(
         "episode_ends", data=new_ep_ends.astype(np.int64), compressors=compressors
+    )
+
+    out_meta.create_array(
+        "episode_is_dagger", data=episode_is_dagger.astype(bool), compressors=compressors
     )
 
     # Trim and copy auxiliary arrays (images, cube state, original states, gripper state)

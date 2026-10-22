@@ -49,6 +49,29 @@ from so101_gym.constants import ASSETS_DIR
 
 XML_PATH = ASSETS_DIR / "so100_transfer_cube_obstacle_ee.xml"
 
+# BGR text colours per obstacle zone (same colours as the analysis plots)
+ZONE_COLORS = {
+    "minus": (52, 104, 235),
+    "center": (214, 120, 42),
+    "plus": (122, 175, 27),
+}
+
+
+def obstacle_zone(env: SO100SimEnv) -> str:
+    """Return which adversarial zone the obstacle is in: 'minus', 'center' or 'plus'.
+
+    The adversarial reset shifts the obstacle by -shift / 0 / +shift along x,
+    so we classify by the offset from the default position.
+    """
+    if env._obstacle_default_pos is None:
+        return "center"
+    offset = env.get_obstacle_pos()[0] - env._obstacle_default_pos[0]
+    if offset < -env.obstacle_shift_x / 2:
+        return "minus"
+    if offset > env.obstacle_shift_x / 2:
+        return "plus"
+    return "center"
+
 
 # ── main DAgger loop ─────────────────────────────────────────────────
 
@@ -75,6 +98,8 @@ def run_dagger_episode(
     # Save RNG state so that the caller can restore it for a replay
     rng_state_before_reset = env.rng.bit_generator.state
     obs = env.reset()
+    zone = obstacle_zone(env)
+    print(f"  Obstacle zone: {zone} (x = {env.get_obstacle_pos()[0]:+.3f})")
 
     action_queue: list[np.ndarray] = []
     step = 0
@@ -251,6 +276,17 @@ def run_dagger_episode(
             cv2.putText(
                 img, "POLICY", (10, 165), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3
             )
+
+        # Obstacle zone indicator
+        cv2.putText(
+            img,
+            f"{zone.upper()} ZONE",
+            (10, 205),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            ZONE_COLORS[zone],
+            3,
+        )
 
         # Hint
         def _label_for(act):
