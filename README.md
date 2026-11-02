@@ -18,6 +18,7 @@ Homework for the ETH Zurich robot learning course (2026). All robotics exercises
 
 - **Exercise 1: MSE policy.** Record demonstrations by teleoperating the arm with the keyboard to pick up a cube, move it around an obstacle, and place it in a bin. Then train an action-chunking policy that maps the current state to the next chunk of actions with an MSE loss.
 - **Exercise 2: DAgger.** Evaluate the policy with adversarial obstacle placements that push it out of the training distribution. Take over control when it starts to fail, so that expert actions are recorded in exactly those states, then merge this data with the original demonstrations and retrain.
+- **Exercise 3: Multi-task policy.** Three colored cubes and the bin are shuffled over four slots at every reset, and the policy is told which color to pick up through a one-hot goal. Implement a goal-conditioned policy that places the requested cube in the bin, and improve its success rate without simply teleoperating many more demonstrations.
 
 ## HW4: Reinforcement Learning
 
