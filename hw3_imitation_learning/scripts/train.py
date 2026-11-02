@@ -32,7 +32,7 @@ from hw3.dataset import (
     load_and_merge_zarrs,
     load_zarr,
 )
-from hw3.model import BasePolicy, build_policy
+from hw3.model import MULTITASK_STATE_KEYS, BasePolicy, MultiTaskPolicy, build_policy
 
 # TODO: Any imports you want from torch or other libraries we use. Not allowed: libraries we don't use
 from torch.utils.data import DataLoader, Subset
@@ -179,6 +179,12 @@ def main() -> None:
         "(default: best_model_<action_space>_<policy>[_dagger<N>ep]_<timestamp>).",
     )
     args = parser.parse_args()
+    if args.policy == "multitask":
+        # MultiTaskPolicy indexes the state by position, so the layout is fixed.
+        if args.state_keys is None:
+            args.state_keys = MULTITASK_STATE_KEYS
+        elif args.state_keys != MULTITASK_STATE_KEYS:
+            parser.error(f"--policy multitask needs --state-keys {' '.join(MULTITASK_STATE_KEYS)}")
 
     # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     # select gpu 2
@@ -287,6 +293,8 @@ def main() -> None:
             d_model=args.d_model,
             depth=args.depth,
         ).to(device)
+        if isinstance(model, MultiTaskPolicy):
+            model.set_state_normalizer(normalizer.state_mean, normalizer.state_std)
 
         n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         print(f"Model parameters: {n_params:,}")

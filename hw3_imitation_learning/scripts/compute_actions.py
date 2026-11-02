@@ -180,6 +180,26 @@ def compute_actions_for_episodes(
     return out_states, out_actions, np.array(out_episode_ends, dtype=np.int64), keep_idx
 
 
+def idle_transition_mask(
+    actions: np.ndarray,
+    action_gripper: np.ndarray,
+    episode_ends: np.ndarray,
+    eps: float = 1e-5,
+) -> np.ndarray:
+    """Flag transitions where the arm does not move and the gripper command does not change.
+
+    These are the pauses of the teleoperator (e.g. hovering over the bin before
+    releasing). Their label is "do nothing", which teaches the policy to stall.
+    """
+    ee_still = np.linalg.norm(actions, axis=1) < eps
+    grip = action_gripper.reshape(len(action_gripper), -1)
+    prev = np.concatenate([grip[:1], grip[:-1]])
+    starts = np.concatenate([[0], episode_ends[:-1]])
+    prev[starts] = grip[starts]  # compare within the episode only
+    grip_still = np.all(np.abs(grip - prev) < 1e-6, axis=1)
+    return ee_still & grip_still
+
+
 def trim_to_transitions(
     merged: dict[str, np.ndarray],
     keep_idx: np.ndarray,
@@ -299,7 +319,13 @@ def main() -> None:
         "--output",
         type=Path,
         default=None,
-        help="Output zarr path. Default: datasets/processed/<task>/processed_<action-space>.zarr",
+        help="Output zarr path. Default: datasets/processed/<task>/processed_<action-space>[_noidle].zarr",
+    )
+    parser.add_argument(
+        "--drop-idle",
+        action="store_true",
+        help="Drop transitions where the arm does not move and the gripper command does not change "
+        "(teleoperator pauses).",
     )
     args = parser.parse_args()
 
@@ -345,6 +371,20 @@ def main() -> None:
     raw_action_gripper = merged.get("action_gripper")
     if raw_action_gripper is not None:
         action_gripper_trimmed = raw_action_gripper[keep_idx]
+
+    # ── optionally drop teleoperator pauses ───────────────────────────
+    if args.drop_idle:
+        if raw_action_gripper is None:
+            raise SystemExit("ERROR: --drop-idle needs the recorded action_gripper array.")
+        keep = ~idle_transition_mask(actions, action_gripper_trimmed, new_ep_ends)
+        ep_id = np.searchsorted(new_ep_ends, np.arange(states.shape[0]), side="right")
+        states, actions = states[keep], actions[keep]
+        keep_idx, action_gripper_trimmed = keep_idx[keep], action_gripper_trimmed[keep]
+        new_ep_ends = np.cumsum(np.bincount(ep_id[keep], minlength=new_ep_ends.size))
+        print(
+            f"Dropped {int((~keep).sum())} idle transitions ({(~keep).mean():.0%}); "
+            f"{states.shape[0]} left, shortest episode {int(np.diff(np.r_[0, new_ep_ends]).min())} steps"
+        )
     # Per-episode DAgger flag (train.py keeps DAgger episodes out of validation)
     episode_is_dagger = merged["_is_dagger"][keep_idx][new_ep_ends - 1]
 
@@ -358,7 +398,8 @@ def main() -> None:
             base_dir = base_dir / "multi_cube"
         else:
             base_dir = base_dir / "single_cube"
-        out_path = base_dir / f"processed_{sa_suffix}.zarr"
+        suffix = "_noidle" if args.drop_idle else ""
+        out_path = base_dir / f"processed_{sa_suffix}{suffix}.zarr"
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     print(f"\nWriting to {out_path} ...")

@@ -40,6 +40,10 @@ CUBE_JOINT_NAMES: tuple[str, ...] = (
     "blue_box_joint",
 )
 CUBE_FREE_DIM = 7
+# (goal cube slot, bin slot) pairs visited in order by --cycle-layouts.
+GOAL_BIN_SLOT_CYCLE: tuple[tuple[int, int], ...] = tuple(
+    (g, b) for g in range(NUM_CUBES + 1) for b in range(NUM_CUBES + 1) if g != b
+)
 ALL_CUBES_DIM = NUM_CUBES * CUBE_FREE_DIM
 
 
@@ -572,9 +576,12 @@ class MulticubeTeleopRecorder(BaseCv2TeleopRecorder):
         keymap_path: Path | None = None,
         seed: int | None = None,
         cube_pos_std: float = DEFAULT_CUBE_POS_STD,
+        cycle_layouts: bool = False,
     ) -> None:
         self.rng = np.random.default_rng(seed)
         self.cube_pos_std = cube_pos_std
+        self.cycle_layouts = cycle_layouts
+        self._cycle_index = 0  # advances only when an episode is saved
 
         super().__init__(
             xml_path=xml_path,
@@ -663,6 +670,8 @@ class MulticubeTeleopRecorder(BaseCv2TeleopRecorder):
         self._goal_onehot = np.zeros(GOAL_DIM, dtype=np.float32)
         self._goal_onehot[index] = 1.0
         print(f"  Goal cube set to: {CUBE_COLORS[index]}")
+        if self.cycle_layouts:
+            self._reset_episode()  # re-place the cycled slot for the new goal cube
 
     def _get_all_cubes_state(self) -> np.ndarray:
         parts = [self.data.qpos[sl].copy() for sl in self.cube_qpos_slices]
@@ -681,12 +690,29 @@ class MulticubeTeleopRecorder(BaseCv2TeleopRecorder):
                 self._default_cube_qpos, self._default_bin_pos
             )
 
+        perm = None
+        if self.cycle_layouts:
+            n = len(GOAL_BIN_SLOT_CYCLE)
+            goal_slot, bin_slot = GOAL_BIN_SLOT_CYCLE[self._cycle_index % n]
+            free_slots = [s for s in range(NUM_CUBES + 1) if s not in (goal_slot, bin_slot)]
+            free_slots = list(self.rng.permutation(free_slots))
+            perm = np.empty(NUM_CUBES + 1, dtype=int)
+            for cube_i in range(NUM_CUBES):
+                perm[cube_i] = goal_slot if cube_i == self._goal_index else free_slots.pop()
+            perm[NUM_CUBES] = bin_slot
+            print(
+                f"  Cycle layout {self._cycle_index % n + 1}/{n} "
+                f"(round {self._cycle_index // n + 1}): "
+                f"{CUBE_COLORS[self._goal_index]} in slot {goal_slot}, bin in slot {bin_slot}"
+            )
+
         cube_slot_ids, bin_slot_id, cube_xy, bin_xy = sample_multicube_layout(
             self.rng,
             self._default_cube_qpos,
             self._default_bin_pos,
             self.cube_pos_std,
             True,
+            perm=perm,
         )
 
         for cube_i, slot_i in enumerate(cube_slot_ids):
@@ -760,6 +786,7 @@ class MulticubeTeleopRecorder(BaseCv2TeleopRecorder):
                     f"(goal was: {CUBE_COLORS[self._goal_index]})."
                 )
                 self.recording = False
+                self._cycle_index += 1
             self._reset_episode()
             return
 
@@ -851,6 +878,12 @@ def main() -> None:
         default=None,
         help="Random seed for reproducible multicube shuffling.",
     )
+    parser.add_argument(
+        "--cycle-layouts",
+        action="store_true",
+        help="Multicube only: step through all 12 (goal cube slot, bin slot) layouts in order, "
+        "moving to the next one each time an episode is saved.",
+    )
     args = parser.parse_args()
 
     ts = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d_%H-%M-%S")
@@ -865,6 +898,7 @@ def main() -> None:
             out_zarr=out,
             control_hz=10.0,
             seed=args.seed,
+            cycle_layouts=args.cycle_layouts,
         ).run()
         return
 

@@ -94,14 +94,20 @@ def sample_multicube_layout(
     default_bin_pos: np.ndarray,
     cube_pos_std: float,
     shuffle_cubes: bool,
+    perm: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int, np.ndarray, np.ndarray]:
-    """Sample a non-overlapping multicube+bin layout."""
+    """Sample a non-overlapping multicube+bin layout.
+
+    ``perm`` (slot of red, green, blue, bin) fixes the slot assignment;
+    only the position noise is then sampled.
+    """
     slot_xy = np.concatenate(
         [default_cube_qpos[:, :2], default_bin_pos[None, :2]],
         axis=0,
     )
     num_slots = NUM_CUBES + 1
-    perm = rng.permutation(num_slots) if shuffle_cubes else np.arange(num_slots)
+    if perm is None:
+        perm = rng.permutation(num_slots) if shuffle_cubes else np.arange(num_slots)
     cube_slot_ids = perm[:NUM_CUBES]
     bin_slot_id = int(perm[NUM_CUBES])
 
